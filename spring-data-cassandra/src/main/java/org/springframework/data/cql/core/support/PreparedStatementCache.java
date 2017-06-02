@@ -24,9 +24,9 @@ import com.datastax.driver.core.Session;
 /**
  * Cache interface to synchronously prepare CQL statements.
  * <p />
- * Implementing classes of {@link PreparedStatementCache} define synchronization and cache implementation behavior.
- * Depending on the cache implementation, the returned {@link PreparedStatement} may or may not be thread safe. Prepared
- * statements are mutable regarding their options.
+ * Implementing classes of {@link PreparedStatementCache} define synchronization and cache implementation behavior. A
+ * cache implementation should optimize for reduction of preparations and cache statements on Cassandras cache key. The
+ * key is specific to the Cluster, keyspace and CQL text.
  *
  * @author Mark Paluch
  * @since 2.0
@@ -44,16 +44,6 @@ public interface PreparedStatementCache {
 	 */
 	PreparedStatement getPreparedStatement(Session session, RegularStatement statement,
 			Supplier<PreparedStatement> preparer);
-
-	/**
-	 * Obtain a {@link PreparedStatement} by {@link Session} and {@code statement}.
-	 *
-	 * @param session must not be {@literal null}.
-	 * @param statement must not be {@literal null} or empty.
-	 * @param preparer must not be {@literal null}.
-	 * @return the {@link PreparedStatement}.
-	 */
-	PreparedStatement getPreparedStatement(Session session, String statement, Supplier<PreparedStatement> preparer);
 
 	/**
 	 * Create a default cache backed by a {@link java.util.concurrent.ConcurrentHashMap}.

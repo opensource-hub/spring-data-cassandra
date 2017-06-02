@@ -16,7 +16,6 @@
 package org.springframework.data.cql.core.support;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 import org.junit.Before;
@@ -29,6 +28,7 @@ import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.RegularStatement;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 
 /**
@@ -60,7 +60,7 @@ public class CachedPreparedStatementCreatorUnitTests {
 		when(otherSession.getLoggedKeyspace()).thenReturn("keyspace");
 		when(otherKeyspaceSession.getLoggedKeyspace()).thenReturn("other");
 
-		when(session.prepare(anyString())).thenReturn(preparedStatement);
+		when(session.prepare(any(RegularStatement.class))).thenReturn(preparedStatement);
 	}
 
 	@Test // DATACASS-403
@@ -68,13 +68,15 @@ public class CachedPreparedStatementCreatorUnitTests {
 
 		String cql = "SELECT foo FROM users;";
 
-		PreparedStatementCache cache = PreparedStatementCache.create();
+		MapPreparedStatementCache cache = MapPreparedStatementCache.create();
 
 		CachedPreparedStatementCreator creator = CachedPreparedStatementCreator.of(cache, cql);
 
 		PreparedStatement result = creator.createPreparedStatement(session);
 
 		assertThat(result).isSameAs(preparedStatement);
+		assertThat(creator.getCache()).isSameAs(cache);
+		assertThat(cache.getCache()).hasSize(1);
 	}
 
 	@Test // DATACASS-403
@@ -89,7 +91,7 @@ public class CachedPreparedStatementCreatorUnitTests {
 		assertThat(CachedPreparedStatementCreator.of(cache, cql).createPreparedStatement(session))
 				.isSameAs(preparedStatement);
 
-		verify(session, atMost(1)).prepare(cql);
+		verify(session, atMost(1)).prepare(any(SimpleStatement.class));
 	}
 
 	@Test // DATACASS-403
@@ -104,15 +106,15 @@ public class CachedPreparedStatementCreatorUnitTests {
 		assertThat(creator.createPreparedStatement(session)).isSameAs(preparedStatement);
 		assertThat(creator.createPreparedStatement(otherSession)).isSameAs(preparedStatement);
 
-		verify(session, atMost(1)).prepare(cql);
-		verify(otherSession, never()).prepare(cql);
+		verify(session, atMost(1)).prepare(any(SimpleStatement.class));
+		verify(otherSession, never()).prepare(any(SimpleStatement.class));
 	}
 
 	@Test // DATACASS-403
 	public void shouldCachePreparedStatementOnKeyspaceLevel() {
 
 		String cql = "SELECT foo FROM users;";
-		when(otherKeyspaceSession.prepare(anyString())).thenReturn(preparedStatement);
+		when(otherKeyspaceSession.prepare(any(RegularStatement.class))).thenReturn(preparedStatement);
 
 		PreparedStatementCache cache = PreparedStatementCache.create();
 
@@ -121,8 +123,8 @@ public class CachedPreparedStatementCreatorUnitTests {
 		assertThat(creator.createPreparedStatement(session)).isSameAs(preparedStatement);
 		assertThat(creator.createPreparedStatement(otherKeyspaceSession)).isSameAs(preparedStatement);
 
-		verify(session).prepare(cql);
-		verify(otherKeyspaceSession).prepare(cql);
+		verify(session).prepare(any(SimpleStatement.class));
+		verify(otherKeyspaceSession).prepare(any(SimpleStatement.class));
 	}
 
 	@Test // DATACASS-403
@@ -144,10 +146,26 @@ public class CachedPreparedStatementCreatorUnitTests {
 	}
 
 	@Test // DATACASS-403
-	public void shouldCacheDifferentBuiltPreparedStatements() {
+	public void shouldCacheSameBuiltPreparedStatements() {
 
 		RegularStatement firstStatement = QueryBuilder.update("users").with(QueryBuilder.set("foo", "bar"));
 		RegularStatement secondStatement = QueryBuilder.update("users").with(QueryBuilder.set("foo", "bar"));
+
+		PreparedStatementCache cache = PreparedStatementCache.create();
+
+		when(session.prepare(firstStatement)).thenReturn(preparedStatement);
+
+		CachedPreparedStatementCreator.of(cache, firstStatement).createPreparedStatement(session);
+		CachedPreparedStatementCreator.of(cache, secondStatement).createPreparedStatement(session);
+
+		verify(session).prepare(firstStatement);
+	}
+
+	@Test // DATACASS-403
+	public void shouldCacheAdoptDifferencesInCachedPreparedStatements() {
+
+		RegularStatement firstStatement = QueryBuilder.update("users").with(QueryBuilder.set("foo", "bar"));
+		RegularStatement secondStatement = QueryBuilder.update("users").with(QueryBuilder.set("bar", "foo"));
 
 		PreparedStatementCache cache = PreparedStatementCache.create();
 

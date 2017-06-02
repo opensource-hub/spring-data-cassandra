@@ -30,8 +30,12 @@ import com.datastax.driver.core.Session;
 
 /**
  * {@link PreparedStatementCache} backed by a {@link Map} cache. Defaults to simple {@link ConcurrentHashMap} caching.
+ * <p/>
+ * Statements are cached with a key that consists of {@link Cluster}, {@code keyspace} and the {@code cql} text.
+ * Statement options (idempotency, timeouts) apply from the statement that was initially prepared.
  *
  * @author Mark Paluch
+ * @since 2.0
  */
 public class MapPreparedStatementCache implements PreparedStatementCache {
 
@@ -42,7 +46,7 @@ public class MapPreparedStatementCache implements PreparedStatementCache {
 	 *
 	 * @param cache must not be {@literal null}.
 	 */
-	protected MapPreparedStatementCache(Map<CacheKey, PreparedStatement> cache) {
+	private MapPreparedStatementCache(Map<CacheKey, PreparedStatement> cache) {
 
 		Assert.notNull(cache, "Cache must not be null");
 
@@ -67,6 +71,13 @@ public class MapPreparedStatementCache implements PreparedStatementCache {
 		return new MapPreparedStatementCache(cache);
 	}
 
+	/**
+	 * @return the underlying {@link Map cache}.
+	 */
+	public Map<CacheKey, PreparedStatement> getCache() {
+		return cache;
+	}
+
 	/* (non-Javadoc)
 	 * @see org.springframework.data.cql.core.support.PrepatedStatementCache#getPreparedStatement(com.datastax.driver.core.RegularStatement, com.datastax.driver.core.Session, java.util.function.Supplier)
 	 */
@@ -74,19 +85,7 @@ public class MapPreparedStatementCache implements PreparedStatementCache {
 	public PreparedStatement getPreparedStatement(Session session, RegularStatement statement,
 			Supplier<PreparedStatement> preparer) {
 
-		CacheKey cacheKey = new CacheKey(session, statement);
-
-		return cache.computeIfAbsent(cacheKey, key -> session.prepare(statement));
-	}
-
-	/* (non-Javadoc)
-	 * @see org.springframework.data.cql.core.support.PrepatedStatementCache#getPreparedStatement(java.lang.String, com.datastax.driver.core.Session, java.util.function.Supplier)
-	 */
-	@Override
-	public PreparedStatement getPreparedStatement(Session session, String statement,
-			Supplier<PreparedStatement> preparer) {
-
-		CacheKey cacheKey = new CacheKey(session, statement);
+		CacheKey cacheKey = new CacheKey(session, statement.toString());
 
 		return cache.computeIfAbsent(cacheKey, key -> session.prepare(statement));
 	}
@@ -100,20 +99,12 @@ public class MapPreparedStatementCache implements PreparedStatementCache {
 		final Cluster cluster;
 		final String keyspace;
 		final String cql;
-		final int statementHash;
 
 		CacheKey(Session session, String cql) {
+
 			this.cluster = session.getCluster();
 			this.keyspace = session.getLoggedKeyspace();
 			this.cql = cql;
-			this.statementHash = cql.hashCode();
-		}
-
-		CacheKey(Session session, RegularStatement statement) {
-			this.cluster = session.getCluster();
-			this.keyspace = session.getLoggedKeyspace();
-			this.cql = statement.toString();
-			this.statementHash = statement.hashCode();
 		}
 	}
 }
